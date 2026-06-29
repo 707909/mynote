@@ -2,39 +2,47 @@ import * as SQLite from 'expo-sqlite';
 
 export const db = SQLite.openDatabaseSync('notesapp.db');
 
-export interface Note {
-  id: number;
-  title: string;
-  body: string;
-  folder_id?: number | null;
+export enum ItemType {
+  Folder = 'folder',
+  Note = 'note',
+  Voice = 'voice',
+  Image = 'image',
+  Document = 'document',
 }
 
-export interface Folder {
+export interface Item {
   id: number;
   name: string;
+  type: ItemType;
+
+  parent_id: number | null;
+
+  content: string | null;
+  file_path: string | null;
+
+  created_at: string;
+  updated_at: string;
 }
 
-export function initDatabase() {
+export async function initDatabase() {
   console.log('INIT DATABASE');
 
-  db.execSync('PRAGMA foreign_keys = ON;');
+  await db.execAsync(`
+    PRAGMA foreign_keys = ON;
 
-  db.execSync(`
-    CREATE TABLE IF NOT EXISTS folders (
+    CREATE TABLE IF NOT EXISTS items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL
-    );
-  `);
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      parent_id INTEGER,
+      content TEXT,
+      file_path TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
 
-  db.execSync(`
-    CREATE TABLE IF NOT EXISTS notes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      body TEXT,
-      folder_id INTEGER,
-      FOREIGN KEY(folder_id)
-      REFERENCES folders(id)
+      FOREIGN KEY(parent_id)
+      REFERENCES items(id)
       ON DELETE CASCADE
     );
-  `);
+    `);
 }

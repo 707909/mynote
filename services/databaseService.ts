@@ -1,31 +1,54 @@
-import { db, Folder, Note  } from "../config/database";
+import { db, Item, ItemType } from "../config/database";
 
-// ------------- FOLDER --------------
-export const getFolders = async (): Promise<Folder[]> => {
-  return await db.getAllAsync<Folder>('SELECT * FROM folders;');
+// ---------- GET ITEMS -----------------
+export const getItems  = async (
+    parent_id: number | null
+): Promise<Item[]> => {
+    if (parent_id === null) {
+        return await db.getAllAsync<Item> (
+            'SELECT * FROM items WHERE parent_id IS NULL;'
+        );
+    }
+
+    return await db.getAllAsync<Item> (
+        'SELECT * FROM items WHERE parent_id = ?;',
+        [parent_id]
+    );
 };
 
-export const addFolder = async (name: string) => {
-    return await db.runAsync('INSERT INTO folders (name) VALUES (?);', [name]);
-};
-
-export const deleteFolder = async (id: number) => {
-    return await db.runAsync('DELETE FROM folders WHERE id = ?;', [id]);
-};
-
-// ------------ ROOT NOTES --------------
-export const getRootNotes = async (): Promise<Note[]> => {
-    return await db.getAllAsync<Note>('SELECT * FROM notes WHERE folder_id IS NULL;');
-};
-
-export const addRootNote = async (
-    title: string,
-    body: string,
+// ------------ ADD FOLDER --------------
+export const addFolder = async (
+    name: string,
+    parent_id: number | null
 ) => {
-    return await db.runAsync('INSERT INTO notes (title, body, folder_id) VALUES (?, ?, NULL);', 
-        [title, body]);
+    const now = new Date().toISOString();
+
+    return await db.runAsync(
+        `INSERT INTO items (name, type, parent_id, content, file_path, created_at, updated_at)
+        VALUES (?, ?, ?, NULL, NULL, ?, ?);`,
+        [name, ItemType.Folder, parent_id, now, now]
+    );
 };
 
-export const deleteRootNote = async (id: number) => {
-    return await db.runAsync('DELETE FROM notes WHERE id = ?;', [id]);
+// -------------- ADD NOTE ------------------
+export const addNote = async (
+    name: string,
+    content: string,
+    parent_id: number | null
+) => {
+    const now = new Date().toISOString();
+
+    return await db.runAsync(
+        `INSERT INTO items (name, type, parent_id, content, file_path, created_at, updated_at)
+        VALUES (?, ?, ?, NULL, NULL, ?, ?);`,
+        [name, ItemType.Note, parent_id, content, now, now]
+    );
+};
+
+// ----------- DELETE ITE< --------------
+export const deleteItem = async (id: number) => {
+    return await db.runAsync(
+        'DELETE FROM items WHERE id = ?;',
+        [id]
+    );
 };

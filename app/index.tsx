@@ -2,14 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 
-import { Folder, Note } from '../config/database';
+
+import { Item, ItemType } from '../config/database';
 import {
   addFolder,
-  addRootNote,
-  deleteFolder,
-  deleteRootNote,
-  getFolders,
-  getRootNotes
+  addNote,
+  deleteItem,
+  getItems
 } from '../services/databaseService';
 
 import {
@@ -25,48 +24,28 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function Home () {
-  // ---------------------- STATE DATA ------------------------
-  // 1. state untuk data Folder
-  // 2. state untuk data rootNotes
-  // 3. filter rootNotes menyaring yang tidak punya folder_id
-  // -----------------------------------------------------------
+  // ---------------------- APP STATE ------------------------
+  const [items, setItems] = useState<Item[]>([]);
 
-  // 1. state untuk data Folders
-  const [folders, setFolders] = useState<Folder[]>([]);
-  const [folderName, setFolderName] = useState('');  
+  const [folderName, setFolderName] = useState('');
 
-  // 2. state untuk data rootNotes
-  const [rootNotes, setRootNotes] = useState<Note[]>([]);
-  const [rootNoteTitle, setRootNoteTitle] = useState('');
-  const [rootNoteBody, setRootNoteBody] = useState('');    
+  const [noteTitle, setNoteTitle] = useState('');
+  const [noteBody, setNoteBody] = useState('');    
 
-  // 3. filter rootNotes menyaring yang tidak punya folder_id
-  const allRootNotes = rootNotes.filter(
-    note => note.folder_id === null
-  );
-
-  // ----------- SEARCH QUERY ------------ NTAR POKOKNYA
-  // 1. state query search
-  // 2. filter search folders dan notes
-  // --------------------------------------
-
-  // 1. state query search
+  // state query
   const [searchQuery, setSearchQuery] = useState('');
 
-  // 2. filter search folders dan notes
-  const filteredFolders = folders.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  const filteredNotes = rootNotes.filter(n => n.title.toLowerCase().includes(searchQuery.toLowerCase()));
+  // filter search
+  const filteredItems = items.filter(item => 
+    item.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   // -------------------- ANIMATION -------------------------
-  // 1. state animation
-  // 2. FAB 1 rootNote
-  // 3. FAB 2 folder
-  // --------------------------------------------------------
 
-  // 1. state animation
+  // animated value buat mengontrol pergerakan FAB
   const animation = useRef(new Animated.Value(0)).current;
 
-  // 2. FAB 1 rootNote
+  //  animasi child FAB untuk membuat note
   const fab1 = {transform: 
     [{translateY: animation.interpolate
       ({
@@ -77,7 +56,7 @@ export default function Home () {
     opacity: animation,
   };
 
-  // 3. FAB 2 folder
+  // animasi child FAB untuk membuat folder
   const fab2 = {transform: 
     [{translateY: animation.interpolate
       ({
@@ -88,18 +67,11 @@ export default function Home () {
     opacity: animation,
   };
 
-  // --------------- FLOATING ACTION BUTTON FAB --------------------------------------------------
-  // 1. state buat open/close MAIN FAB
-  // 2. toggle open/close MAIN FAB
-  // 3. state buat pop out addFolder & addRootNote
-  // 4. function biar CHILD FAB munculin pop out addFolder & addRootNote
-  // 5. function biar tombol "Cancel" mengosongkan field "Folder name" dan menghilangkan pop out
-  // ----------------------------------------------------------------------------------------------
+  // --------------- FLOATING ACTION BUTTON FAB -------------------------
 
-  // 1. state buat open/close MAIN FAB
   const [open, setOpen] = useState(false);
 
-  // 2. toggle open/close MAIN FAB
+  // toggle open/close MAIN FAB
   const toggleMenu = () => {
     const toValue = open ? 0 : 1;
     Animated.spring(animation, {
@@ -108,43 +80,42 @@ export default function Home () {
     setOpen(!open);
   };
 
-  // 3. state buat pop out addFolder & addRootNote
+  // buat menentukan apakah modal muncul/tdk
   const [visible, setVisible] = useState(false);
+
+  // nentuin jenis modalny apa
   const [modalType, setModalType] = useState<'folder' | 'note' | null>(null); 
 
-  // 4. function biar CHILD FAB munculin pop out addFolder & addRootNote
+  // buka modal sesuai jenis yg dipilih
   const openModal = (type: "folder" | "note") => {
     setModalType(type);
     setVisible(true);
   };  
 
-  // 5. function biar tombol "Cancel" mengosongkan field "Folder name" dan menghilangkan pop out
+  // menutup modal dan reset semua input
   const closeModal = () => {
     setVisible(false);
     setModalType(null);
 
     setFolderName('');
-    setRootNoteTitle('');
-    setRootNoteBody('');
+    setNoteTitle('');
+    setNoteBody('');
   };
 
   // ----------------- REFRESH DATA ----------------------
-  // function tarik data terbaru dari sqlite
-  // -----------------------------------------------------
 
-  // function tarik data terbaru dari sqlite
+  // ngambil ulang seluruh data dari SQLite
   const loadingRef = useRef(false); 
   const refreshData = async () => {
     if (loadingRef.current) return;
 
+    // mencegah refreshData dipanggil bersamaan
     loadingRef.current = true;
 
     try {
-    const allFolders = await getFolders();
-    const allRootNotes = await getRootNotes();
+      const allItems = await getItems(null);
 
-    setFolders(allFolders);
-    setRootNotes(allRootNotes);
+      setItems(allItems);
 
     } catch (error) {
     console.log('refreshData error:', error);
@@ -155,23 +126,19 @@ export default function Home () {
     }
   };      
 
-  // -------------------------- LOGIC --------------------------------
-  // FOLDER                           ROOT NOTE
-  // 1. handleAddFolder               1. handleAddRootNote
-  // 2. handleDeleteFolder            2. handleDeleteRootNote
-  // -------------------------------------------------------------------
+  // --------- ADD & DELETE ----------
 
-  // 1. handleAddFolder  
+  // add folder 
   const handleAddFolder = async () => {
     try {
       console.log('adding folder...');
 
       if (folderName.trim() === '') {
-        Alert.alert('Folder name required!');
+        Alert.alert('Name required!');
         return;
       }
 
-      await addFolder(folderName);
+      await addFolder(folderName, null);
       await refreshData();
       closeModal();
 
@@ -179,37 +146,19 @@ export default function Home () {
       console.log('add folder error:', error);
       Alert.alert('Error', String(error));
     }
-  };  
-
-  // 2. handleDeleteFolder
-  const handleDeleteFolder = (folder_id: number, folderName: string) => {
-    Alert.alert('Delete folder', `Are you sure to delete "${folderName}"?`, [
-      { text: 'Cancel' }, 
-      { text: 'Delete' , onPress: async () => {
-        try { 
-
-          await deleteFolder(folder_id); 
-          await refreshData();
-
-        } catch (error) {
-          console.log('delete folder error:', error);
-          Alert.alert('Error', String(error));
-        }
-      }}
-    ]);
   };   
 
-  // 1. handleAddRootNote
-  const handleAddRootNote =async  () => {
+  // add note
+  const handleAddNote =async  () => {
     try {
       console.log('adding note...');
 
-      if (rootNoteTitle.trim() === '') {
-        Alert.alert('Note title required!');
+      if (noteTitle.trim() === '') {
+        Alert.alert('Title required!');
         return;
       }
 
-      await addRootNote(rootNoteTitle, rootNoteBody);
+      await addNote(noteTitle, noteBody, null);
       await refreshData();
       closeModal();
 
@@ -219,117 +168,136 @@ export default function Home () {
     }
   };  
 
-  // 2. handleDeleteRootNote
-  const handleDeleteRootNote = (note_id: number, noteTitle: string) => {
-    Alert.alert('Delete note', `are you sure to delete "${noteTitle}"?`, [
-      { text: 'Cancel' },
-      { text: 'Delete', onPress: async () => {
-        try {
-          await deleteRootNote(note_id);
-          await refreshData();
+  // delete for folder & note
+  const handleDeleteItem = (item: Item) => {
+    Alert.alert(
+      'Delete',
+      `Are you sure you want to delete "${item.name}"?`,
+      [
+        {text: 'Cancel'},
+        {text: 'Delete',
+          onPress: async () => {
+            try {
+              await deleteItem(item.id);
+              await refreshData();
+            } catch (error) {
+              Alert.alert('Error', String(error));
+            }
+          },
+        },
+      ]
+    );
+  };
 
-        } catch (error) {
-          console.log('delete note error:', error);
-          Alert.alert('Error', String(error));
-        }
-      }}
-    ]);
-  };   
+  // ---------------------------------------------
 
-  // ------------ USEFOCUSEFFECT ------------
+  // refresh data setiap halaman kembali fokus
   useFocusEffect(
     useCallback(() => {
       void refreshData();
     }, [])
   );
 
+  // event saat ikon informasi ditekan
+  const handlePressInfo = () => {
+    console.log('Info icon pressed');
+  };
+
   return (
     <SafeAreaView style={styles.safearea}>
-        <View>
-            <View>
-              {filteredFolders.map((folder) => (
-                <View key={folder.id}>
-                  <TouchableOpacity onLongPress={() => handleDeleteFolder(folder.id, folder.name)} delayLongPress={500}>
-                    <Text>{folder.name}</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}    
-              {allRootNotes.map((note) => (
-                <View key={note.id}>
-                  <TouchableOpacity onLongPress={() => handleDeleteRootNote(note.id, note.title)} delayLongPress={500}>
-                    <Text>{note.title}</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}                                 
-            </View>  
-        </View>
-        <View>
-          <Modal visible={visible} transparent animationType='fade'>
-            <View style={styles.overlay}>
-              <View style={styles.modal}>
-                {modalType === 'folder' && (
-                  <>
+      <View style={styles.header}>
+        <Text style={styles.title}>
+          Mynotes
+        </Text>
+
+        <TouchableOpacity
+          onPress={handlePressInfo}
+          activeOpacity={0.7}
+          accessibilityRole='button'
+          accessibilityLabel='Information'
+        >
+          <Ionicons name="information-circle-outline" size={22} color="#ffffff" />
+        </TouchableOpacity>
+      </View> 
+
+      <View>
+          <View>
+            {filteredItems.map((item) => (
+              <View key={item.id}>
+                <TouchableOpacity onLongPress={() => handleDeleteItem(item)} delayLongPress={500}>
+                  <Text>{item.type === ItemType.Folder ? '📁' : '📝'} {item.name}</Text>
+                </TouchableOpacity>
+              </View>
+            ))}                                
+          </View>  
+      </View>
+      <View>
+        <Modal visible={visible} transparent animationType='fade'>
+          <View style={styles.overlay}>
+            <View style={styles.modal}>
+              {modalType === 'folder' && (
+                <>
+                  <TextInput
+                      placeholder='Folder name...'
+                      value={folderName}
+                      onChangeText={setFolderName}
+                      style={{
+                        width: '100%',
+                        borderWidth: 1,
+                        padding: 12,
+                        marginBottom: 20,
+                      }}
+                  />
+                  <View>
+                    <TouchableOpacity onPress={closeModal}>
+                      <Text>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleAddFolder}>
+                      <Text>Save</Text>
+                    </TouchableOpacity>
+                  </View>                               
+                </>
+              )} 
+            
+              {modalType === 'note' && (
+                <>
                     <TextInput
-                        placeholder='Folder name...'
-                        value={folderName}
-                        onChangeText={setFolderName}
-                        style={{
-                          width: '100%',
-                          borderWidth: 1,
-                          padding: 12,
-                          marginBottom: 20,
-                        }}
+                      placeholder='Note title...'
+                      value={noteTitle}
+                      onChangeText={setNoteTitle}
+                      style={{
+                        width: '100%',
+                        borderWidth: 1,
+                        padding: 12,
+                        marginBottom: 20,
+                      }}
+                    />
+                    <TextInput
+                      placeholder='Note content...'
+                      value={noteBody}
+                      onChangeText={setNoteBody}
+                      style={{
+                        width: '100%',
+                        borderWidth: 1,
+                        padding: 12,
+                        marginBottom: 20,
+                      }}
+                      multiline
                     />
                     <View>
                       <TouchableOpacity onPress={closeModal}>
                         <Text>Cancel</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={handleAddFolder}>
+                      <TouchableOpacity onPress={handleAddNote}>
                         <Text>Save</Text>
                       </TouchableOpacity>
-                    </View>                               
+                    </View>
                   </>
-                )} 
-              
-                {modalType === 'note' && (
-                  <>
-                      <TextInput
-                        placeholder='Note title...'
-                        value={rootNoteTitle}
-                        onChangeText={setRootNoteTitle}
-                        style={{
-                          width: '100%',
-                          borderWidth: 1,
-                          padding: 12,
-                          marginBottom: 20,
-                        }}
-                      />
-                      <TextInput
-                        placeholder='Note content...'
-                        value={rootNoteBody}
-                        onChangeText={setRootNoteBody}
-                        style={{
-                          width: '100%',
-                          borderWidth: 1,
-                          padding: 12,
-                          marginBottom: 20,
-                        }}
-                        multiline
-                      />
-                      <View>
-                        <TouchableOpacity onPress={closeModal}>
-                          <Text>Cancel</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={handleAddRootNote}>
-                          <Text>Save</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </>
-                )} 
-              </View>
+              )} 
             </View>
-          </Modal>
-      </View>
+          </View>
+        </Modal>
+    </View>
 
       <View style={styles.container}>
         <Animated.View style={[styles.smallFab, fab2]}>
@@ -355,7 +323,8 @@ export default function Home () {
 const styles = StyleSheet.create({
   safearea: {
     flex: 1,
-    backgroundColor: 'white',
+    paddingHorizontal: 12,
+    backgroundColor: 'black',
   },
   container: {
     position: "absolute",
@@ -401,5 +370,18 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderRadius: 15,
     padding: 20,
-  }
+  },
+
+    header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
 })
+
+// hhh gonna style this soon 😭
